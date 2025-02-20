@@ -1,9 +1,9 @@
 var express = require('express');
 var router = express.Router();
-
+var controller= require('../controller/userInfo.controller')
 /* GET users listing. */
-router.get('/', function(req, res, next) {
-  res.send('respond with a resource');
-});
-
+router.get('/getplantInfo', controller.getPlant);
+router.post('/insertData',controller.insertPlant);
+router.put("/updatePlant",controller.updatePlant);
+router.delete("/deletePlant/:ID",controller.deletePlant);
 module.exports = router;
