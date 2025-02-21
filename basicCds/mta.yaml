@@ -1,43 +1,137 @@
 _schema-version: 3.3.0
 ID: basicCds
+description: A simple CAP project.
 version: 1.0.0
-description: "A simple CAP project."
+modules:
+- name: basicCds-srv
+  type: nodejs
+  path: gen/srv
+  requires:
+  - name: basicCds-db
+  - name: basicCds-auth
+  provides:
+  - name: srv-api
+    properties:
+      srv-url: ${default-url}
+  parameters:
+    buildpack: nodejs_buildpack
+    readiness-health-check-http-endpoint: /health
+    readiness-health-check-type: http
+  build-parameters:
+    builder: npm
+- name: basicCds-db-deployer
+  type: hdb
+  path: gen/db
+  requires:
+  - name: basicCds-db
+  parameters:
+    buildpack: nodejs_buildpack
+- name: basicCds-destination-content
+  type: com.sap.application.content
+  requires:
+  - name: srv-api
+  - name: basicCds-destination-service
+    parameters:
+      content-target: true
+  - name: basicCds_html_repo_host
+    parameters:
+      service-key:
+        name: basicCds_html_repo_host-key
+  - name: basicCds-auth
+    parameters:
+      service-key:
+        name: basicCds-auth-key
+  parameters:
+    content:
+      instance:
+        destinations:
+        - Authentication: OAuth2UserTokenExchange
+          HTML5.Timeout: 1200000
+          Name: api-nodejs-srv
+          TokenServiceInstanceName: basicCds-auth
+          TokenServiceKeyName: basicCds-auth-key
+          URL: ~{srv-api/srv-url}
+        - Name: cdsBasicapp_basicCds_html_repo_host
+          ServiceInstanceName: basicCds-html5-app-host-service
+          ServiceKeyName: basicCds_html_repo_host-key
+          sap.cloud.service: cdsBasicapp
+        - Authentication: OAuth2UserTokenExchange
+          Name: cdsBasicapp_basicCds_auth
+          ServiceInstanceName: basicCds-auth
+          ServiceKeyName: basicCds-auth-key
+          sap.cloud.service: cdsBasicapp
+        existing_destinations_policy: update
+  build-parameters:
+    no-source: true
+- name: basicCds-app-content
+  type: com.sap.application.content
+  path: .
+  requires:
+  - name: basicCds_html_repo_host
+    parameters:
+      content-target: true
+  build-parameters:
+    build-result: resources
+    requires:
+    - artifacts:
+      - cdsbasicapp.zip
+      name: cdsbasicapp
+      target-path: resources/
+- name: cdsbasicapp
+  type: html5
+  path: app/cdsbasicapp
+  build-parameters:
+    build-result: dist
+    builder: custom
+    commands:
+    - npm install
+    - npm run build:cf
+    supported-platforms: []
+resources:
+- name: basicCds-db
+  type: com.sap.xs.hdi-container
+  parameters:
+    service: hana
+    service-plan: hdi-shared
+- name: basicCds-auth
+  type: org.cloudfoundry.managed-service
+  parameters:
+    config:
+      tenant-mode: dedicated
+      xsappname: basicCds-${org}-${space}
+    path: ./xs-security.json
+    service: xsuaa
+    service-plan: application
+- name: basicCds-destination-service
+  type: org.cloudfoundry.managed-service
+  parameters:
+    config:
+      HTML5Runtime_enabled: true
+      init_data:
+        instance:
+          destinations:
+          - Authentication: NoAuthentication
+            Name: ui5
+            ProxyType: Internet
+            Type: HTTP
+            URL: https://ui5.sap.com
+          existing_destinations_policy: update
+      version: 1.0.0
+    service: destination
+    service-name: basicCds-destination-service
+    service-plan: lite
+- name: basicCds_html_repo_host
+  type: org.cloudfoundry.managed-service
+  parameters:
+    service: html5-apps-repo
+    service-name: basicCds-html5-app-host-service
+    service-plan: app-host
 parameters:
+  deploy_mode: html5-repo
   enable-parallel-deployments: true
 build-parameters:
   before-all:
-    - builder: custom
-      commands:
-        - npm ci
-        - npx cds build --production
-modules:
-  - name: basicCds-srv
-    type: nodejs
-    path: gen/srv
-    parameters:
-      buildpack: nodejs_buildpack
-      readiness-health-check-type: http
-      readiness-health-check-http-endpoint: /health
-    build-parameters:
-      builder: npm
-    provides:
-      - name: srv-api # required by consumers of CAP services (e.g. approuter)
-        properties:
-          srv-url: ${default-url}
-    requires:
-      - name: basicCds-db
-
-  - name: basicCds-db-deployer
-    type: hdb
-    path: gen/db
-    parameters:
-      buildpack: nodejs_buildpack
-    requires:
-      - name: basicCds-db
-
-resources:
-  - name: basicCds-db
-    type: com.sap.xs.hdi-container
-    parameters:
-      service: hana
-      service-plan: hdi-shared
+  - builder: custom
+    commands:
+    - npm ci
+    - npx cds build --production
