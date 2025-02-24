@@ -1,0 +1,103 @@
+_schema-version: 3.3.0
+ID: dbBacknode
+description: A simple CAP project.
+version: 1.0.0
+modules:
+- name: dbBacknode-srv
+  type: nodejs
+  path: gen/srv
+  requires:
+  - name: dbBacknode-auth
+  - name: dbBacknode-db
+  provides:
+  - name: srv-api
+    properties:
+      srv-url: ${default-url}
+  parameters:
+    buildpack: nodejs_buildpack
+    readiness-health-check-http-endpoint: /health
+    readiness-health-check-type: http
+  build-parameters:
+    builder: npm
+- name: dbBacknode-db-deployer
+  type: hdb
+  path: gen/db
+  requires:
+  - name: dbBacknode-db
+  parameters:
+    buildpack: nodejs_buildpack
+- name: dbBacknode-destination-content
+  type: com.sap.application.content
+  requires:
+  - name: srv-api
+  - name: dbBacknode-destination-service
+    parameters:
+      content-target: true
+  - name: dbBacknode_html_repo_host
+    parameters:
+      service-key:
+        name: dbBacknode_html_repo_host-key
+  - name: dbBacknode-auth
+    parameters:
+      service-key:
+        name: dbBacknode-auth-key
+  parameters:
+    content:
+      instance:
+        destinations:
+        - Authentication: OAuth2UserTokenExchange
+          HTML5.Timeout: 1200000
+          Name: api-nodejs-srv
+          TokenServiceInstanceName: dbBacknode-auth
+          TokenServiceKeyName: dbBacknode-auth-key
+          URL: ~{srv-api/srv-url}
+        - Name: dbBackedApp_dbBacknode_html_repo_host
+          ServiceInstanceName: dbBacknode-html5-app-host-service
+          ServiceKeyName: dbBacknode_html_repo_host-key
+          sap.cloud.service: dbBackedApp
+        - Authentication: OAuth2UserTokenExchange
+          Name: dbBackedApp_dbBacknode_auth
+          ServiceInstanceName: dbBacknode-auth
+          ServiceKeyName: dbBacknode-auth-key
+          sap.cloud.service: dbBackedApp
+        existing_destinations_policy: update
+  build-parameters:
+    no-source: true
+resources:
+- name: dbBacknode-auth
+  type: org.cloudfoundry.managed-service
+  parameters:
+    config:
+      tenant-mode: dedicated
+      xsappname: dbBacknode-${org}-${space}
+    path: ./xs-security.json
+    service: xsuaa
+    service-plan: application
+- name: dbBacknode-db
+  type: com.sap.xs.hdi-container
+  parameters:
+    service: hana
+    service-plan: hdi-shared
+- name: dbBacknode-destination-service
+  type: org.cloudfoundry.managed-service
+  parameters:
+    config:
+      HTML5Runtime_enabled: true
+      version: 1.0.0
+    service: destination
+    service-name: dbBacknode-destination-service
+    service-plan: lite
+- name: dbBacknode_html_repo_host
+  type: org.cloudfoundry.managed-service
+  parameters:
+    service: html5-apps-repo
+    service-name: dbBacknode-html5-app-host-service
+    service-plan: app-host
+parameters:
+  enable-parallel-deployments: true
+build-parameters:
+  before-all:
+  - builder: custom
+    commands:
+    - npm ci
+    - npx cds build --production

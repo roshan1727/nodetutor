@@ -1,0 +1,97 @@
+_schema-version: 3.3.0
+ID: missionCRED
+description: A simple CAP project.
+version: 1.0.0
+modules:
+- name: missionCRED-srv
+  type: nodejs
+  path: gen/srv
+  requires:
+  - name: missionCRED-auth
+  - name: missionCRED-db
+  provides:
+  - name: srv-api
+    properties:
+      srv-url: ${default-url}
+  parameters:
+    buildpack: nodejs_buildpack
+    readiness-health-check-http-endpoint: /health
+    readiness-health-check-type: http
+  build-parameters:
+    builder: npm
+- name: missionCRED-db-deployer
+  type: hdb
+  path: gen/db
+  requires:
+  - name: missionCRED-db
+  parameters:
+    buildpack: nodejs_buildpack
+- name: missionCRED-destination-content
+  type: com.sap.application.content
+  requires:
+  - name: srv-api
+  - name: missionCRED-destination-service
+    parameters:
+      content-target: true
+  - name: missionCRED_html_repo_host
+    parameters:
+      service-key:
+        name: missionCRED_html_repo_host-key
+  - name: missionCRED-auth
+    parameters:
+      service-key:
+        name: missionCRED-auth-key
+  parameters:
+    content:
+      instance:
+        destinations:
+        - Name: missionCRED_missionCRED_html_repo_host
+          ServiceInstanceName: missionCRED-html5-app-host-service
+          ServiceKeyName: missionCRED_html_repo_host-key
+          sap.cloud.service: missionCRED
+        - Authentication: OAuth2UserTokenExchange
+          Name: missionCRED_missionCRED_auth
+          ServiceInstanceName: missionCRED-auth
+          ServiceKeyName: missionCRED-auth-key
+          sap.cloud.service: missionCRED
+        existing_destinations_policy: update 
+  build-parameters:
+    no-source: true
+resources:
+- name: missionCRED-auth
+  type: org.cloudfoundry.managed-service
+  parameters:
+    config:
+      tenant-mode: dedicated
+      xsappname: missionCRED-${org}-${space}
+    path: ./xs-security.json
+    service: xsuaa
+    service-plan: application
+- name: missionCRED-db
+  type: com.sap.xs.hdi-container
+  parameters:
+    service: hana
+    service-plan: hdi-shared
+- name: missionCRED-destination-service
+  type: org.cloudfoundry.managed-service
+  parameters:
+    config:
+      HTML5Runtime_enabled: true
+      version: 1.0.0
+    service: destination
+    service-name: missionCRED-destination-service
+    service-plan: lite
+- name: missionCRED_html_repo_host
+  type: org.cloudfoundry.managed-service
+  parameters:
+    service: html5-apps-repo
+    service-name: missionCRED-html5-app-host-service
+    service-plan: app-host
+parameters:
+  enable-parallel-deployments: true
+build-parameters:
+  before-all:
+  - builder: custom
+    commands:
+    - npm ci
+    - npx cds build --production
